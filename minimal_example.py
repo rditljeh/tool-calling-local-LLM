@@ -1,39 +1,78 @@
-from typing import List
-
-from langchain.messages import AIMessage
-from langchain.tools import tool
-from langchain_ollama import ChatOllama
 import webbrowser
+from ollama import chat
 
-
-@tool
-def add(a: int, b: int) -> int:
-    """Add two numbers"""
-    return a + b
-
-@tool
+#example of taking input
 def multiply(a: int, b: int) -> int:
-    """Multiply two numbers"""
+    """Multiply two numbers
+
+    Args:
+      a: The first number
+      b: The second number
+
+    Returns:
+      The product of the two numbers
+    """
     return a * b
 
-@tool
+def screen_failure() -> str:
+    """Provide assistance for any issue where the user cannot see their screen.
+    Args:
+      None
+
+    Returns:
+      Steps to take to fix issues with the screen
+    """
+    return "The problem is likely with the monitor. Provide steps such as unplugging it and checking any display cables."
+
+def network_failure() -> str:
+    """Provide assistance for any issue where the user cannot access the internet.
+    Args:
+      None
+
+    Returns:
+      Steps to take to fix issues with network connection
+    """
+    return "The problem is likely with the router. Provide steps such as restarting the router and trying to hard-wire with ethernet cords."
+
+
 def perform_google_search(query: str) -> None:
-    """Take the users question, modify it to improve results, and open a web browser to perform a google search"""
+    """Take the users question, and open a web browser to perform a google search"""
     query = query.replace(" ", "+")
     webbrowser.open(f"https://www.google.com/search?q={query}")
     return
 
-llm = ChatOllama(
-    model="deepseek-r1:8b",
-    validate_model_on_init=True,
-    temperature=0,
-).bind_tools([add, multiply])
+def speak_to_a_human() -> str:
+    """Provide contact information to the user if they would like to speak to a human.
+    Args:
+      None
 
-result = llm.invoke(
-    "Could you validate user 123? They previously lived at "
-    "123 Fake St in Boston MA and 234 Pretend Boulevard in "
-    "Houston TX."
-)
+    Returns:
+      A phone number and email address where support can be reached.
+    """
+    return "The support phone number is 555-GET-HELP and the email address is fakesupport@gmail.com."
 
-if isinstance(result, AIMessage) and result.tool_calls:
-    print(result.tool_calls)
+
+messages = [{"role": "user", "content": "My screen is having problems, can you help?"}]
+
+# pass functions directly as tools in the tools list or as a JSON schema
+response = chat(model="qwen3-vl:4b", messages=messages,
+                tools=[screen_failure, network_failure, perform_google_search, speak_to_a_human], think=False)
+
+messages.append(response.message)
+if response.message.tool_calls:
+    # only recommended for models which only return a single tool call
+    call = response.message.tool_calls[0]
+    if call.function.name == 'screen_failure':
+        result = screen_failure(**call.function.arguments)
+    elif call.function.name == 'network_failure':
+        result = network_failure(**call.function.arguments)
+    elif call.function.name == 'perform_google_search':
+        result = perform_google_search(**call.function.arguments)
+    elif call.function.name == 'speak_to_a_human':
+        result = speak_to_a_human(**call.function.arguments)
+    # add the tool result to the messages
+    messages.append({"role": "tool", "tool_name": call.function.name, "content": str(result)})
+
+    final_response = chat(model="qwen3-vl:4b", messages=messages,
+                          tools=[screen_failure, network_failure, perform_google_search, speak_to_a_human], think=False)
+    print(final_response.message.content)
